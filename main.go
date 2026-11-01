@@ -8,6 +8,12 @@ import (
 	"os"
 )
 
+/* TODO:
+* 1. Update IPs
+* 2. Turn into a daemon
+* 3. Create config file support
+*/
+
 type ipinfo_result struct {
 	IP            string `json:"ip"`
 	ASN           string `json:"asn"`
