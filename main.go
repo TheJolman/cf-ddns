@@ -1,14 +1,23 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"os"
 )
 
-var ipinfo_api_token = os.Getenv("IPINFO_API_TOKEN")
+type ipinfo_result struct {
+	IP            string `json:"ip"`
+	ASN           string `json:"asn"`
+	AsName        string `json:"as_name"`
+	AsDomain      string `json:"as_domain"`
+	CountryCode   string `json:"country_code"`
+	Country       string `json:"country"`
+	ContinentCode string `json:"continent_code"`
+	Continent     string `json:"continent"`
+}
 
 func help() {
 	fmt.Printf("%s\nUpdate dynamic public IPs\n", os.Args[0])
@@ -18,18 +27,20 @@ func get_ip(client http.Client, version int) (string, error) {
 	if version != 4 && version != 6 {
 		return "", fmt.Errorf("version must be 4 or 6")
 	}
+	ipinfo_api_token := os.Getenv("IPINFO_API_TOKEN")
+	if ipinfo_api_token == "" {
+		return "", fmt.Errorf("IPINFO_API_TOKEN is empty")
+	}
 
-	url, err := url.Parse(fmt.Sprintf("https://v%d.api.ipinfo.io/lite/me", version))
+	url, err := url.Parse(fmt.Sprintf("https://v%d.api.ipinfo.io/lite/me?token=%s", version, ipinfo_api_token))
 	if err != nil {
 		return "", err
 	}
 
-	fmt.Printf("%s\n", url)
 	req, err := http.NewRequest("GET", url.String(), nil)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Set("Authorization", "Bearer"+ipinfo_api_token)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -37,12 +48,14 @@ func get_ip(client http.Client, version int) (string, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("Error: got status %s", resp.Status)
+		return "", fmt.Errorf("http status %s", resp.Status)
 	}
-	body, err := io.ReadAll(resp.Body)
-	ip := string(body)
 
-	return ip, nil
+	var result ipinfo_result
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("decode response: %w", err)
+	}
+	return result.IP, nil
 }
 
 func update_dns_record(version int) {
@@ -50,7 +63,7 @@ func update_dns_record(version int) {
 
 	ip, err := get_ip(client, version)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%v", err)
+		fmt.Fprintf(os.Stderr, "failed to check ip: %v", err)
 	}
 
 	fmt.Println(ip)
